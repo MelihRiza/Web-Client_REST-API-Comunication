@@ -1,0 +1,148 @@
+==========================================PCOM TEMA-4 HTTP===========================================
+===============================================README================================================
+
+*Student*: Riza Melih
+*Grupa*: 324 CD
+
+Tema este implementata in C++.
+		 
+		 
+comenzi implementate: "register", "login", "enter_library", "add_book", "get_books", "get_book",
+		      "delete_book", "logout", "exit".
+		     
+		     
+Biblioteca pentru lucrul cu datele JSON este "nlohmann", cea din enuntul temei pentru C++.
+Am folosit functionalitati din aceasta pentru: 
+	-> crearea tipurilor json pentru comenzile register si login, in care am stocat username-ul si
+	   parola, si pentru comanda add_book pentru a stoca datele cartii
+	
+	-> deserializarea datelor primite ca json la "get_book" si "get_books" folosind 'from_json',
+	nlohmann :: json :: parse() si stocarea in structuri cu campuri specifice pentru a fi afisate
+	datele ulterior.
+	
+	-> dump(4) pentru convertirea unui element de tip nlohmann :: json intr-un string pretty.
+
+
+Initializez char* cookies si tokenJWT ca fiind NULL (inexistente), ca mai apoi la primirea cookie-ului de
+sesiune la logare sa ii atribui valoarea lui cookies, si la primirea acces-ului dupa comanda 'enter_library'
+sa ii atribui valoarea lui tokenJWT. 
+Acestea doua au rolul sa verifice daca clientul este conectat la un cont, caz in care cookie-ul este 
+diferit de NULL si daca userul are acces la biblioteca de pe server, caz in care tokenJWT e diferit de
+NULL.	
+	
+Functiile de tipul 'construire*()', construiesc intr-un string cererea ce trebuie trimisa server-ului
+pentru fiecare tip de actiune:
+	
+	-> construireCerereHTTPInregistrare(int lungimeJson) : construieste cererea pentru register,
+	seteaza campul "Content-Type: application/json" si adauga lungimea json-ului ce va fi apenduit.
+	
+	-> construireCerereHTTPLogare(int lungimeJson) : analog cu register.
+	
+	-> construireCerereAcces(char* cookie) : primeste cookie-ul obtinut dupa login necesar
+	pentru construirea cererii pentru obtinerea acces-ului. "enter_library".
+	
+	-> construireCerereCarti(char* tokenJWT) : primeste tokenJWT obtinut dupa 'enter_library'
+	si construieste cererea.
+	
+	-> construireCerereCarte(char* tokenJWT, int ID) : apenduieste ID-ul cartii cerute dupa
+	"GET /api/v1/tema/library/books/" adauga in cerere tokenJWT pentru autorizare
+	
+	-> construireCerereAdaugareCarte(char* tokenJWT, int lungimeJson) : va avea de adaugat un json
+	ce contine datele cartii, deci analog cu register si login va exista "Content-Type: application/json"
+	urmat de lungimea json-ului ce va fi adaugat.
+	
+	-> construireCerereStergereCarte(char* tokenJWT, int ID) : are nevoie de tokenJWT si ID-ul cartii
+	ce se doreste a fi sters, ID apenduit la "DELETE /api/v1/tema/library/books/"
+
+
+
+La fiecare actiune ce trebuie realizata, inainte de trimiterea catre server cererii,
+se va apela functia 'conectareLaServer()'.
+
+	'conectareLaServer()' : intoarce socket-ul creat dupa conectarea la server-ul cu
+	ip: 34.254.242.81 si port: 8080.	
+
+
+Clientul preia de la stdin comanda iar daca aceasta este :
+	-> 'exit' - executia programului se incheie
+	
+	-> 'login' - preia apoi datele de la stdin (username si password). Formeaza json-ul si
+	apeleaza 'cerereLogare()'.
+		
+		Se verifica ca input-ul sa nu contine spatii libere, acestea nefiind permise in credentiale
+		
+		cerereLogare(): apeleaza 'conectareLaServer()' care intoarce socket-ul conexiunii nou
+		realizate cu server-ul. Construieste cererea pentru server cu ajutorul functiei
+		'construireCerereHTTPLogare' si apoi apenduieste json-ul pentru login (username si
+		password). Asteapta raspuns de la server si afiseaza la stdout un mesaj pentru
+		explicit pentru user. Functia intoarce cookie-ul de sesiune.
+		
+			
+	
+	-> 'enter_library' - verifica daca user-ul nu este conectat ('cookies' este NULL)
+	caz in care intoarce eroare (nu poti obtine acces la biblioteca daca nu esti conectat cu
+	login anterior). Altfel apeleaza 'cerereAcces()' ce primeste cookies, functia va construi
+	cererea pentru server prin functia 'construireCerereAcces()' si va astepta raspuns, iar
+	in functie de codul de retur al server-ului va afisa un mesaj explicit pentru user. 
+	'cerereAcces()' intoarce tokenJWT preluat din raspunsul server-ului daca user-ul era conectat
+	 cand a trimis cererea (cookie-ul era valid).
+	
+	
+	
+	-> 'logout' - verifica daca user-ul este conectat (cu login), iar in caz negativ printeaza 
+	o eroare (nu te poti deconecta daca nu esti conectat).
+	Altfel se iese din cont (cookies si tokenJWT devin iar NULL pentru a pierde acces-ul avut
+	la biblioteca).
+	
+	
+	-> Altfel comanda de la stdin a user-ului este tratata de 'parsareComanda()' ce primeste string-ul
+	'comanda' si tokenJWT (ce ofera acces-ul la biblioteca):
+		
+		Comezile tratate pot fi:
+		
+		-> 'register' : analog ca la login, doar ca 'cerereIntregistrare()' intoarce codul preluat
+		din raspunsul server-ului, cod tratat si afisat un mesaj explicit pentru user. Evident
+		cererea pentru server se va construi cu 'construireCerereHTTPInregistrare()', la care se va
+		apendui json-ul construit.
+		
+		
+		-> 'add_book' : se citesc de la stdin datele pentru o carte ce trebuie adaugata si se 
+		construieste json-ul. Se foloseste functia 'adaugareCarte()' care primeste json-ul 
+		cu detaliile cartii si tokenJWT, (operatie de adaugare a unei carti are nevoie de acces
+		la biblioteca, deci tokenJWT-ul va fi adaugat in structura cererii pentru server).
+		Pentru constructia cererii, 'adaugareCarte()' apeleaza 'construireCerereAdaugareCarte()'.
+		Functia 'adaugareCarte()' intoarce codul raspuns al server-ului.
+		Se va afisa explicit un mesaj pentru user cu rezultatul actiunii. 
+		
+		
+		-> 'delete_book' : se verifica daca tokenJWT este NULL, daca da, se afiseaza 
+		eroarea ca nu se poate sterge cartea (nu exista acces la biblioteca). 
+		Daca tokenJWT este diferit de NULL, se apeleaza 'stergereCarte()' care primeste tokenJWT si
+		ID-ul cartii ce trebuie stearsa. Mai departe 'stergereCarte()' apeleaza functia de construire
+		a cererii si trimite cererea spre server. Asteapta raspuns si afiseaza mesaj explicit 
+		user-ului conform rezultatului operatiei.
+		
+		
+		-> 'get_book' : se verifica daca tokenJWT este NULL, daca da, se afiseaza eroarea
+		ca nu exista permisiuni. Altfel, se apeleaza functia 'cerereCarte()' ce va trimite catre server
+		cererea pentru a primi o carte, creata cu 'construireCerereCarte()'. Se asteapta rezultatul,
+		iar in caz pozitiv (s-a primit cartea sub forma de json, codul de raspuns a fost 200) cartea
+		trebuie printata, se va apela 'afisareCarte()'.
+			
+			afisareCarte() : cauta in intreg raspunsul dat de server json-ul ce contine detaliile
+			cartii cu ajutorul 'strstr' si 'strchr'. Apoi se adauga la inceput-ul si sfarsitul datelor
+			paranteze drepte pentru a formata json-ul pentru a fi eligibil parsarii.
+			Datele sunt parsate catre o structura 'Carte' ce contine toate campurile necesare.
+			Se foloseste 'from_json' din cadrul bibliotecii 'nlohmann'.
+			Apoi sunt afisate user-ului datele din cadrul structurii Carte.
+		
+		
+		-> 'get_books' : analog anterior.
+		
+			afisareCarti() : cauta in raspusul server-ului json-ul si analog, fiecare element
+			este parsat intr-o structura 'Carti' ce contine 'id' si 'title' si sunt afisate.
+		
+		
+		-> Alftel se afiseaza "Comanda inexistenta!"
+		
+		
